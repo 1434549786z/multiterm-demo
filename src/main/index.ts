@@ -1,0 +1,178 @@
+import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import * as pty from 'node-pty';
+import { normalizeConfig, type AppConfig, type TerminalCreateOptions } from '../shared';
+
+interface TerminalSession {
+  ownerId: number;
+  process: pty.IPty;
+}
+
+const sessions = new Map<string, TerminalSession>();
+let mainWindow: BrowserWindow | null = null;
+
+function configFilePath(): string {
+  return path.join(app.getPath('userData'), 'config.json');
+}
+
+function readConfig(): AppConfig {
+  try {
+    return normalizeConfig(JSON.parse(fs.readFileSync(configFilePath(), 'utf8')));
+  } catch {
+    return normalizeConfig(undefined);
+  }
+}
+
+function writeConfig(config: unknown): AppConfig {
+  const normalized = normalizeConfig(config);
+  fs.mkdirSync(path.dirname(configFilePath()), { recursive: true });
+  fs.writeFileSync(configFilePath(), JSON.stringify(normalized, null, 2), 'utf8');
+  return normalized;
+}
+
+function createWindow(): void {
+  mainWindow = new BrowserWindow({
+    width: 1280,
+    height: 860,
+    minWidth: 900,
+    minHeight: 620,
+    title: 'MultiTerm',
+    backgroundColor: '#111316',
+    webPreferences: {
+      preload: path.join(__dirname, '../preload/index.mjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  });
+
+  if (process.env.ELECTRON_RENDERER_URL) {
+    void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
+  } else {
+    void mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+  }
+}
+
+function registerIpc(): void {
+  ipcMain.handle('config:get', () => readConfig());
+  ipcMain.handle('config:save', (_event, config: AppConfig) => writeConfig(config));
+  ipcMain.handle('config:export', async (_event, config: AppConfig) => {
+    const result = await dialog.showSaveDialog({
+      title: '导出配置',
+      defaultPath: 'multiterm-config.json',
+      filters: [{ name: 'JSON', extensions: ['json'] }]
+    });
+    if (result.canceled || !result.filePath) return false;
+    fs.writeFileSync(result.filePath, JSON.stringify(normalizeConfig(config), null, 2), 'utf8');
+    return true;
+  });
+  ipcMain.handle('config:import', async () => {
+    const result = await dialog.showOpenDialog({
+      title: '导入配置',
+      properties: ['openFile'],
+      filters: [{ name: 'JSON', extensions: ['json'] }]
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return writeConfig(JSON.parse(fs.readFileSync(result.filePaths[0], 'utf8')));
+  });
+  ipcMain.handle('dialog:select-directory', async (_event, currentPath?: string) => {
+    const result = await dialog.showOpenDialog({
+      title: '选择工作目录',
+      defaultPath: existingDirectory(currentPath),
+      properties: ['openDirectory']
+    });
+    return result.canceled ? null : result.filePaths[0];
+  });
+
+  ipcMain.handle('terminal:create', (event, options: TerminalCreateOptions) => {
+    closeSession(options.id);
+    const cwd = existingDirectory(options.cwd);
+    const shell = defaultShell();
+    const terminal = pty.spawn(shell.file, shell.args, {
+      name: 'xterm-256color',
+      cwd,
+      cols: saneDimension(options.cols, 80),
+      rows: saneDimension(options.rows, 24),
+      env: { ...process.env, TERM: 'xterm-256color' }
+    });
+
+    sessions.set(options.id, { ownerId: event.sender.id, process: terminal });
+    event.sender.once('destroyed', () => closeSessionsForOwner(event.sender.id));
+    terminal.onData((data) => {
+      if (!event.sender.isDestroyed()) event.sender.send('terminal:data', { id: options.id, data });
+    });
+    terminal.onExit(({ exitCode }) => {
+      sessions.delete(options.id);
+      if (!event.sender.isDestroyed()) event.sender.send('terminal:exit', { id: options.id, exitCode });
+    });
+    if (options.command.trim()) {
+      setTimeout(() => terminal.write(`${options.command.trimEnd()}\r`), 120);
+    }
+    return { cwd };
+  });
+
+  ipcMain.on('terminal:input', (_event, payload: { id: string; data: string }) => {
+    sessions.get(payload.id)?.process.write(payload.data);
+  });
+  ipcMain.on('terminal:resize', (_event, payload: { id: string; cols: number; rows: number }) => {
+    try {
+      sessions.get(payload.id)?.process.resize(saneDimension(payload.cols, 80), saneDimension(payload.rows, 24));
+    } catch {
+      // node-pty can throw if the shell exits while the renderer is resizing.
+    }
+  });
+  ipcMain.on('terminal:dispose', (_event, id: string) => closeSession(id));
+}
+
+function closeSessionsForOwner(ownerId: number): void {
+  for (const [id, session] of sessions) {
+    if (session.ownerId === ownerId) closeSession(id);
+  }
+}
+
+function closeSession(id: string): void {
+  const session = sessions.get(id);
+  if (!session) return;
+  sessions.delete(id);
+  try {
+    session.process.kill();
+  } catch {
+    // Already gone.
+  }
+}
+
+function existingDirectory(value?: string): string {
+  if (value) {
+    try {
+      if (fs.statSync(value).isDirectory()) return value;
+    } catch {
+      // Fall back to the home directory.
+    }
+  }
+  return os.homedir();
+}
+
+function defaultShell(): { file: string; args: string[] } {
+  if (process.platform === 'win32') return { file: 'powershell.exe', args: ['-NoLogo'] };
+  return { file: process.env.SHELL || '/bin/bash', args: [] };
+}
+
+function saneDimension(value: number, fallback: number): number {
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
+}
+
+registerIpc();
+
+app.whenReady().then(() => {
+  createWindow();
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+});
+
+app.on('window-all-closed', () => {
+  for (const id of sessions.keys()) closeSession(id);
+  if (process.platform !== 'darwin') app.quit();
+});
