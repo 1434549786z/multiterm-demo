@@ -209,6 +209,7 @@ function TerminalPane({
     const fitAndResize = () => {
       try {
         fit.fit();
+        terminal.scrollToBottom();
         window.multiTerm.terminalResize(terminalId, terminal.cols, terminal.rows);
       } catch {
         // The terminal can be measured before layout settles.
