@@ -262,6 +262,7 @@ input[type="range"] {
 
 .terminal-host .xterm {
   height: 100%;
+  padding-right: 10px;
 }
 
 .modal-backdrop {

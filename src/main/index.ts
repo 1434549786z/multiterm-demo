@@ -47,6 +47,7 @@ function createWindow(): void {
       sandbox: false
     }
   });
+  mainWindow.setMenu(null);
 
   if (process.env.ELECTRON_RENDERER_URL) {
     void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
