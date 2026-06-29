@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import * as pty from 'node-pty';
-import { normalizeConfig, type AppConfig, type TerminalCreateOptions } from '../shared';
+import { normalizeConfig, SETTINGS_QUESTIONS, type AppConfig, type SettingsChoice, type SettingsQuestion, type TerminalCreateOptions } from '../shared';
 
 interface TerminalSession {
   ownerId: number;
@@ -61,6 +61,21 @@ function createWindow(): void {
 function registerIpc(): void {
   ipcMain.handle('config:get', () => readConfig());
   ipcMain.handle('config:save', (_event, config: AppConfig) => writeConfig(config));
+  ipcMain.handle('dialog:settings-question', async (_event, message: unknown): Promise<SettingsChoice> => {
+    if (typeof message !== 'string' || !SETTINGS_QUESTIONS.includes(message as SettingsQuestion)) return 'cancel';
+    const options: Electron.MessageBoxOptions = {
+      type: 'question',
+      message,
+      buttons: ['是', '否', '取消'],
+      defaultId: 0,
+      cancelId: 2,
+      noLink: true
+    };
+    const result = mainWindow
+      ? await dialog.showMessageBox(mainWindow, options)
+      : await dialog.showMessageBox(options);
+    return ['yes', 'no', 'cancel'][result.response] as SettingsChoice;
+  });
   ipcMain.handle('config:export', async (_event, config: AppConfig) => {
     const result = await dialog.showSaveDialog({
       title: '导出配置',

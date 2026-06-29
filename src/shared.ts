@@ -51,6 +51,10 @@ export interface TerminalExitEvent {
   exitCode: number;
 }
 
+export const SETTINGS_QUESTIONS = ['保存后是否重新加载界面？', '是否保存本次修改？'] as const;
+export type SettingsQuestion = (typeof SETTINGS_QUESTIONS)[number];
+export type SettingsChoice = 'yes' | 'no' | 'cancel';
+
 export const DEFAULT_CONFIG: AppConfig = {
   openDefaultPresetOnStart: true,
   defaultPresetId: 'default',
@@ -75,6 +79,10 @@ export const DEFAULT_CONFIG: AppConfig = {
 
 export function cloneConfig(config: AppConfig = DEFAULT_CONFIG): AppConfig {
   return JSON.parse(JSON.stringify(config)) as AppConfig;
+}
+
+export function sameConfig(a: AppConfig, b: AppConfig): boolean {
+  return JSON.stringify(normalizeConfig(a)) === JSON.stringify(normalizeConfig(b));
 }
 
 export function normalizeConfig(value: unknown): AppConfig {

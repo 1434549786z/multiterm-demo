@@ -1,4 +1,4 @@
-import type { AppConfig, TerminalCreateOptions, TerminalDataEvent, TerminalExitEvent } from '../shared';
+import type { AppConfig, SettingsChoice, SettingsQuestion, TerminalCreateOptions, TerminalDataEvent, TerminalExitEvent } from '../shared';
 
 export {};
 
@@ -7,6 +7,7 @@ declare global {
     multiTerm: {
       getConfig: () => Promise<AppConfig>;
       saveConfig: (config: AppConfig) => Promise<AppConfig>;
+      askSettingsQuestion: (message: SettingsQuestion) => Promise<SettingsChoice>;
       exportConfig: (config: AppConfig) => Promise<boolean>;
       importConfig: () => Promise<AppConfig | null>;
       selectDirectory: (currentPath?: string) => Promise<string | null>;

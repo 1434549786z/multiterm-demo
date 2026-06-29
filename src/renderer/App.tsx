@@ -6,6 +6,7 @@ import {
   cloneConfig,
   CONSOLE_SLOTS,
   DEFAULT_CONFIG,
+  sameConfig,
   type AppConfig,
   type ConsoleId,
   type ConsolePreset,
@@ -66,10 +67,10 @@ export default function App() {
   const selectedProfile = config.presetProfiles.find((profile) => profile.id === config.defaultPresetId) ?? config.presetProfiles[0];
   const activeProfile = config.openDefaultPresetOnStart ? selectedProfile : blankProfile;
 
-  async function saveConfig(next: AppConfig) {
+  async function saveConfig(next: AppConfig, reload: boolean) {
     const saved = await window.multiTerm.saveConfig(next);
     setConfig(saved);
-    setSessionKey((value) => value + 1);
+    if (reload) setSessionKey((value) => value + 1);
     setSettingsOpen(false);
   }
 
@@ -185,6 +186,11 @@ function TerminalPane({
   const terminalRef = useRef<Terminal | null>(null);
   const searchRef = useRef<SearchAddon | null>(null);
   const resizeTimerRef = useRef<number | null>(null);
+  const paneNameRef = useRef(pane.name);
+  const notificationsRef = useRef(notifications);
+
+  paneNameRef.current = pane.name;
+  notificationsRef.current = notifications;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -224,7 +230,7 @@ function TerminalPane({
     const resizeObserver = new ResizeObserver(fitAndResize);
     resizeObserver.observe(container);
     const input = terminal.onData((data) => window.multiTerm.terminalInput(terminalId, data));
-    const bell = terminal.onBell(() => notify(pane.name, notifications));
+    const bell = terminal.onBell(() => notify(paneNameRef.current, notificationsRef.current));
     const offData = window.multiTerm.onTerminalData((event) => {
       if (event.id === terminalId) terminal.write(event.data);
     });
@@ -275,7 +281,7 @@ function TerminalPane({
       terminalRef.current = null;
       searchRef.current = null;
     };
-  }, [terminalId, pane.cwd, pane.command, pane.name, fontSize, theme, shouldFocus, notifications]);
+  }, [terminalId]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -334,7 +340,7 @@ function SettingsDialog({
 }: {
   config: AppConfig;
   onClose: () => void;
-  onSave: (config: AppConfig) => Promise<void>;
+  onSave: (config: AppConfig, reload: boolean) => Promise<void>;
   onImport: (config: AppConfig) => void;
 }) {
   const [draft, setDraft] = useState(() => cloneConfig(config));
@@ -403,12 +409,25 @@ function SettingsDialog({
     onImport(imported);
   }
 
+  async function close() {
+    if (sameConfig(config, draft)) return onClose();
+    const choice = await window.multiTerm.askSettingsQuestion('是否保存本次修改？');
+    if (choice === 'yes') return onSave(draft, false);
+    if (choice === 'no') onClose();
+  }
+
+  async function save() {
+    if (sameConfig(config, draft)) return onClose();
+    const choice = await window.multiTerm.askSettingsQuestion('保存后是否重新加载界面？');
+    if (choice !== 'cancel') await onSave(draft, choice === 'yes');
+  }
+
   return (
     <div className="modal-backdrop" role="presentation">
       <section className="settings-modal" role="dialog" aria-modal="true" aria-label="设置">
         <header className="settings-header">
           <h1>设置</h1>
-          <button className="icon-button" type="button" title="关闭" aria-label="关闭" onClick={onClose}>×</button>
+          <button className="icon-button" type="button" title="关闭" aria-label="关闭" onClick={close}>×</button>
         </header>
         <div className="settings-body">
           <nav className="settings-nav">
@@ -527,7 +546,7 @@ function SettingsDialog({
           </div>
           <div className="button-row">
             <button type="button" onClick={() => setDraft(cloneConfig(DEFAULT_CONFIG))}>重置为默认</button>
-            <button type="button" className="primary" onClick={() => onSave(draft)}>保存</button>
+            <button type="button" className="primary" onClick={save}>保存</button>
           </div>
         </footer>
       </section>
