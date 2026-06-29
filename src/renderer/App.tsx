@@ -184,6 +184,7 @@ function TerminalPane({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const searchRef = useRef<SearchAddon | null>(null);
+  const resizeTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -210,7 +211,11 @@ function TerminalPane({
       try {
         fit.fit();
         terminal.scrollToBottom();
-        window.multiTerm.terminalResize(terminalId, terminal.cols, terminal.rows);
+        if (resizeTimerRef.current) window.clearTimeout(resizeTimerRef.current);
+        resizeTimerRef.current = window.setTimeout(() => {
+          window.multiTerm.terminalResize(terminalId, terminal.cols, terminal.rows);
+          resizeTimerRef.current = null;
+        }, 120);
       } catch {
         // The terminal can be measured before layout settles.
       }
@@ -259,6 +264,7 @@ function TerminalPane({
     });
 
     return () => {
+      if (resizeTimerRef.current) window.clearTimeout(resizeTimerRef.current);
       resizeObserver.disconnect();
       input.dispose();
       bell.dispose();

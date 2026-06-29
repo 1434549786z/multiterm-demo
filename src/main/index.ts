@@ -8,6 +8,8 @@ import { normalizeConfig, type AppConfig, type TerminalCreateOptions } from '../
 interface TerminalSession {
   ownerId: number;
   process: pty.IPty;
+  cols: number;
+  rows: number;
 }
 
 const sessions = new Map<string, TerminalSession>();
@@ -91,15 +93,17 @@ function registerIpc(): void {
     closeSession(options.id);
     const cwd = existingDirectory(options.cwd);
     const shell = defaultShell();
+    const cols = saneDimension(options.cols, 80);
+    const rows = saneDimension(options.rows, 24);
     const terminal = pty.spawn(shell.file, shell.args, {
       name: 'xterm-256color',
       cwd,
-      cols: saneDimension(options.cols, 80),
-      rows: saneDimension(options.rows, 24),
+      cols,
+      rows,
       env: { ...process.env, TERM: 'xterm-256color' }
     });
 
-    sessions.set(options.id, { ownerId: event.sender.id, process: terminal });
+    sessions.set(options.id, { ownerId: event.sender.id, process: terminal, cols, rows });
     event.sender.once('destroyed', () => closeSessionsForOwner(event.sender.id));
     terminal.onData((data) => {
       if (!event.sender.isDestroyed()) event.sender.send('terminal:data', { id: options.id, data });
@@ -119,7 +123,13 @@ function registerIpc(): void {
   });
   ipcMain.on('terminal:resize', (_event, payload: { id: string; cols: number; rows: number }) => {
     try {
-      sessions.get(payload.id)?.process.resize(saneDimension(payload.cols, 80), saneDimension(payload.rows, 24));
+      const session = sessions.get(payload.id);
+      const cols = saneDimension(payload.cols, 80);
+      const rows = saneDimension(payload.rows, 24);
+      if (!session || (session.cols === cols && session.rows === rows)) return;
+      session.process.resize(cols, rows);
+      session.cols = cols;
+      session.rows = rows;
     } catch {
       // node-pty can throw if the shell exits while the renderer is resizing.
     }
