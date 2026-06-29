@@ -1,8 +1,14 @@
 # MultiTerm
 
-MultiTerm 是一个基于 Electron、React、TypeScript、xterm.js 和 node-pty 的多窗口终端 Demo。
+MultiTerm 是一个基于 Electron、React、TypeScript、xterm.js 和 node-pty 的多窗口终端 Demo，目标是更方便地一键启动开发项目，并提供适合 vibe coding 的 CLI 操作界面。
 
 > 当前项目处于 Demo 阶段，适合用于功能验证、技术选型和二次开发起点；还不是面向生产发布的稳定版本。
+
+## 界面预览
+
+![vibe coding cli 界面预览](docs/images/vibe-coding-cli.png)
+
+![vibe coding cli 设置预览](docs/images/vibe-coding-setting.png)
 
 ## 功能概览
 
