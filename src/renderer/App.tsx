@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
@@ -181,6 +182,7 @@ function TerminalPane({
   const [status, setStatus] = useState('启动中');
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; hasSelection: boolean } | null>(null);
   const terminalId = `${sessionKey}:${pane.id}:${restartKey}`;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
@@ -245,7 +247,7 @@ function TerminalPane({
         return false;
       }
       if (event.ctrlKey && event.shiftKey && event.code === 'KeyV') {
-        void navigator.clipboard.readText().then((text) => window.multiTerm.terminalInput(terminalId, text));
+        void pasteClipboard();
         return false;
       }
       if (event.ctrlKey && event.code === 'KeyF') {
@@ -292,6 +294,41 @@ function TerminalPane({
 
   const slot = CONSOLE_SLOTS.find((item) => item.id === pane.id)!;
 
+  function openContextMenu(event: MouseEvent<HTMLDivElement>) {
+    if (event.button !== 2) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const terminal = terminalRef.current;
+    if (!terminal) return;
+    setContextMenu({ x: event.clientX, y: event.clientY, hasSelection: terminal.getSelection().length > 0 });
+  }
+
+  function blockContextMenu(event: MouseEvent<HTMLDivElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  async function copySelection() {
+    try {
+      const text = terminalRef.current?.getSelection() ?? '';
+      if (text) await navigator.clipboard.writeText(text);
+    } finally {
+      setContextMenu(null);
+      terminalRef.current?.focus();
+    }
+  }
+
+  async function pasteClipboard() {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) window.multiTerm.terminalInput(terminalId, text);
+      terminalRef.current?.clearSelection();
+    } finally {
+      setContextMenu(null);
+      terminalRef.current?.focus();
+    }
+  }
+
   function findNext() {
     if (query.trim()) searchRef.current?.findNext(query);
   }
@@ -327,8 +364,79 @@ function TerminalPane({
           <button type="button" onClick={findNext}>下一个</button>
         </div>
       )}
-      <div ref={containerRef} className="terminal-host" />
+      <div ref={containerRef} className="terminal-host" onMouseDownCapture={openContextMenu} onContextMenuCapture={blockContextMenu} />
+      {contextMenu && (
+        <TerminalContextMenu
+          theme={theme}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          hasSelection={contextMenu.hasSelection}
+          onCopy={copySelection}
+          onPaste={pasteClipboard}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </article>
+  );
+}
+
+function TerminalContextMenu({
+  theme,
+  x,
+  y,
+  hasSelection,
+  onCopy,
+  onPaste,
+  onClose
+}: {
+  theme: 'dark' | 'light';
+  x: number;
+  y: number;
+  hasSelection: boolean;
+  onCopy: () => void;
+  onPaste: () => void;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
+  const left = Math.max(8, Math.min(x, window.innerWidth - 204));
+  const top = Math.max(8, Math.min(y, window.innerHeight - (hasSelection ? 82 : 46)));
+
+  return createPortal(
+    <div
+      className={`context-menu-layer ${theme}`}
+      role="presentation"
+      onPointerDown={onClose}
+      onContextMenu={(event) => {
+        event.preventDefault();
+      }}
+    >
+      <div
+        className="context-menu"
+        role="menu"
+        style={{ left, top }}
+        onPointerDown={(event) => event.stopPropagation()}
+        onContextMenu={(event) => event.preventDefault()}
+      >
+        {hasSelection && (
+          <button type="button" role="menuitem" onClick={onCopy}>
+            <span>复制</span>
+            <kbd>Ctrl+Shift+C</kbd>
+          </button>
+        )}
+        <button type="button" role="menuitem" onClick={onPaste}>
+          <span>粘贴</span>
+          <kbd>Ctrl+Shift+V</kbd>
+        </button>
+      </div>
+    </div>,
+    document.body
   );
 }
 

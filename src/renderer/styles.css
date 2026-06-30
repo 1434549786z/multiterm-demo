@@ -265,6 +265,61 @@ input[type="range"] {
   padding-right: 10px;
 }
 
+.context-menu-layer {
+  --panel: #191d22;
+  --text: #eef2f7;
+  --muted: #9aa5b1;
+  --border: #343a43;
+  --button: #252b33;
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+}
+
+.context-menu-layer.light {
+  --panel: #ffffff;
+  --text: #1f2328;
+  --muted: #66707c;
+  --border: #c7ced8;
+  --button: #f4f6f8;
+}
+
+.context-menu {
+  position: fixed;
+  width: 196px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.32);
+  padding: 4px;
+}
+
+.context-menu button {
+  display: flex;
+  width: 100%;
+  min-height: 32px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 0 8px;
+  text-align: left;
+}
+
+.context-menu button:hover,
+.context-menu button:focus-visible {
+  background: var(--button);
+  outline: 0;
+}
+
+.context-menu kbd {
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;
