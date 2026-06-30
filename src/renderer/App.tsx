@@ -188,6 +188,7 @@ function TerminalPane({
   const terminalRef = useRef<Terminal | null>(null);
   const searchRef = useRef<SearchAddon | null>(null);
   const resizeTimerRef = useRef<number | null>(null);
+  const selectionStartRef = useRef<{ x: number; y: number } | null>(null);
   const paneNameRef = useRef(pane.name);
   const notificationsRef = useRef(notifications);
 
@@ -247,6 +248,8 @@ function TerminalPane({
         return false;
       }
       if (event.ctrlKey && event.shiftKey && event.code === 'KeyV') {
+        event.preventDefault();
+        event.stopPropagation();
         void pasteClipboard();
         return false;
       }
@@ -301,6 +304,27 @@ function TerminalPane({
     const terminal = terminalRef.current;
     if (!terminal) return;
     setContextMenu({ x: event.clientX, y: event.clientY, hasSelection: terminal.getSelection().length > 0 });
+  }
+
+  function rememberSelectionStart(event: MouseEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    selectionStartRef.current = { x: event.clientX, y: event.clientY };
+  }
+
+  function openSelectionMenu(event: MouseEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    const start = selectionStartRef.current;
+    selectionStartRef.current = null;
+    if (!start || Math.hypot(event.clientX - start.x, event.clientY - start.y) < 4) {
+      terminalRef.current?.clearSelection();
+      setContextMenu(null);
+      return;
+    }
+    requestAnimationFrame(() => {
+      if ((terminalRef.current?.getSelection() ?? '').length > 0) {
+        setContextMenu({ x: event.clientX, y: event.clientY, hasSelection: true });
+      }
+    });
   }
 
   function blockContextMenu(event: MouseEvent<HTMLDivElement>) {
@@ -364,7 +388,14 @@ function TerminalPane({
           <button type="button" onClick={findNext}>下一个</button>
         </div>
       )}
-      <div ref={containerRef} className="terminal-host" onMouseDownCapture={openContextMenu} onContextMenuCapture={blockContextMenu} />
+      <div
+        ref={containerRef}
+        className="terminal-host"
+        onMouseDownCapture={openContextMenu}
+        onMouseDown={rememberSelectionStart}
+        onMouseUpCapture={openSelectionMenu}
+        onContextMenuCapture={blockContextMenu}
+      />
       {contextMenu && (
         <TerminalContextMenu
           theme={theme}
