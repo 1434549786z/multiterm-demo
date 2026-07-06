@@ -81,9 +81,20 @@ export default function App() {
     <main className={`app ${theme}`}>
       <header className="app-header">
         <div className="window-title">MultiTerm</div>
-        <button className="icon-button" type="button" title="设置" aria-label="设置" onClick={() => setSettingsOpen(true)}>
-          ⚙
-        </button>
+        <div className="window-actions">
+          <button className="icon-button" type="button" title="设置" aria-label="设置" onClick={() => setSettingsOpen(true)}>
+            ⚙
+          </button>
+          <button className="window-control" type="button" title="最小化" aria-label="最小化" onClick={() => window.multiTerm.windowMinimize()}>
+            -
+          </button>
+          <button className="window-control" type="button" title="最大化/还原" aria-label="最大化/还原" onClick={() => window.multiTerm.windowToggleMaximize()}>
+            □
+          </button>
+          <button className="window-control close" type="button" title="关闭" aria-label="关闭" onClick={() => window.multiTerm.windowClose()}>
+            ×
+          </button>
+        </div>
       </header>
       <TerminalGrid
         key={sessionKey}

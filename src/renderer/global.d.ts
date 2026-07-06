@@ -5,6 +5,9 @@ export {};
 declare global {
   interface Window {
     multiTerm: {
+      windowMinimize: () => void;
+      windowToggleMaximize: () => void;
+      windowClose: () => void;
       getConfig: () => Promise<AppConfig>;
       saveConfig: (config: AppConfig) => Promise<AppConfig>;
       askSettingsQuestion: (message: SettingsQuestion) => Promise<SettingsChoice>;

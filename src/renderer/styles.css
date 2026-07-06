@@ -106,22 +106,64 @@ input[type="range"] {
   display: grid;
   height: 42px;
   flex: 0 0 auto;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
-  padding: 0 12px;
+  padding: 0 0 0 14px;
+  user-select: none;
+  -webkit-app-region: drag;
 }
 
 .window-title {
-  grid-column: 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-weight: 700;
   letter-spacing: 0;
 }
 
-.app-header .icon-button {
-  grid-column: 3;
+.window-actions {
+  display: flex;
+  height: 100%;
+  align-items: center;
   justify-self: end;
+  -webkit-app-region: no-drag;
+}
+
+.app-header button {
+  -webkit-app-region: no-drag;
+}
+
+.window-actions .icon-button {
+  margin-right: 6px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.window-control {
+  width: 46px;
+  min-width: 46px;
+  height: 42px;
+  min-height: 42px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.window-control:hover,
+.window-control:focus-visible,
+.window-actions .icon-button:hover,
+.window-actions .icon-button:focus-visible {
+  background: var(--button);
+  outline: 0;
+}
+
+.window-control.close:hover,
+.window-control.close:focus-visible {
+  background: #c42b1c;
+  color: #ffffff;
 }
 
 .icon-button {

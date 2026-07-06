@@ -40,6 +40,7 @@ function createWindow(): void {
     height: 860,
     minWidth: 900,
     minHeight: 620,
+    frame: false,
     title: 'MultiTerm',
     backgroundColor: '#111316',
     webPreferences: {
@@ -59,6 +60,15 @@ function createWindow(): void {
 }
 
 function registerIpc(): void {
+  ipcMain.on('window:minimize', (event) => BrowserWindow.fromWebContents(event.sender)?.minimize());
+  ipcMain.on('window:toggle-maximize', (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (!window) return;
+    if (window.isMaximized()) window.unmaximize();
+    else window.maximize();
+  });
+  ipcMain.on('window:close', (event) => BrowserWindow.fromWebContents(event.sender)?.close());
+
   ipcMain.handle('config:get', () => readConfig());
   ipcMain.handle('config:save', (_event, config: AppConfig) => writeConfig(config));
   ipcMain.handle('dialog:settings-question', async (_event, message: unknown): Promise<SettingsChoice> => {
