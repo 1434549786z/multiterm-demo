@@ -8,6 +8,8 @@ import {
   CONSOLE_SLOTS,
   DEFAULT_CONFIG,
   sameConfig,
+  shouldForwardImeText,
+  terminalInputForKey,
   type AppConfig,
   type ConsoleId,
   type ConsolePreset,
@@ -216,6 +218,13 @@ function TerminalPane({
     terminalRef.current = terminal;
     searchRef.current = search;
 
+    const forwardImeText = (event: InputEvent) => {
+      if (!shouldForwardImeText(event.data, event.inputType, event.isComposing)) return;
+      event.preventDefault();
+      window.multiTerm.terminalInput(terminalId, event.data);
+    };
+    terminal.textarea?.addEventListener('beforeinput', forwardImeText);
+
     const fitAndResize = () => {
       try {
         fit.fit();
@@ -242,6 +251,13 @@ function TerminalPane({
     });
 
     terminal.attachCustomKeyEventHandler((event) => {
+      const inputData = terminalInputForKey(event);
+      if (inputData !== null) {
+        event.preventDefault();
+        event.stopPropagation();
+        window.multiTerm.terminalInput(terminalId, inputData);
+        return false;
+      }
       if (event.type !== 'keydown') return true;
       if (event.ctrlKey && event.shiftKey && event.code === 'KeyC') {
         document.execCommand('copy');
@@ -281,6 +297,7 @@ function TerminalPane({
       bell.dispose();
       offData();
       offExit();
+      terminal.textarea?.removeEventListener('beforeinput', forwardImeText);
       window.multiTerm.terminalDispose(terminalId);
       terminal.dispose();
       terminalRef.current = null;

@@ -1,4 +1,4 @@
-import { cloneConfig, normalizeConfig, sameConfig } from './shared';
+import { cloneConfig, normalizeConfig, sameConfig, shouldForwardImeText, terminalInputForKey } from './shared';
 
 const config = normalizeConfig({
   defaultPresetId: 'work',
@@ -32,3 +32,14 @@ const reordered = {
   openDefaultPresetOnStart: config.openDefaultPresetOnStart
 };
 console.assert(sameConfig(config, reordered), 'ignores object key insertion order');
+
+console.assert(
+  terminalInputForKey({ type: 'keydown', key: 'Enter', shiftKey: true, ctrlKey: false, altKey: false, metaKey: false }) === '\n',
+  'maps Shift+Enter to a terminal newline'
+);
+console.assert(
+  terminalInputForKey({ type: 'keydown', key: 'Enter', shiftKey: false, ctrlKey: false, altKey: false, metaKey: false }) === null,
+  'keeps Enter handled by xterm'
+);
+console.assert(shouldForwardImeText('，', 'insertText', false), 'forwards Chinese IME punctuation');
+console.assert(!shouldForwardImeText('中', 'insertCompositionText', true), 'keeps composing text handled by xterm');

@@ -51,6 +51,15 @@ export interface TerminalExitEvent {
   exitCode: number;
 }
 
+export interface TerminalKeyEvent {
+  type: string;
+  key: string;
+  shiftKey: boolean;
+  ctrlKey: boolean;
+  altKey: boolean;
+  metaKey: boolean;
+}
+
 export const SETTINGS_QUESTIONS = ['保存后是否重新加载界面？', '是否保存本次修改？'] as const;
 export type SettingsQuestion = (typeof SETTINGS_QUESTIONS)[number];
 export type SettingsChoice = 'yes' | 'no' | 'cancel';
@@ -83,6 +92,16 @@ export function cloneConfig(config: AppConfig = DEFAULT_CONFIG): AppConfig {
 
 export function sameConfig(a: AppConfig, b: AppConfig): boolean {
   return JSON.stringify(normalizeConfig(a)) === JSON.stringify(normalizeConfig(b));
+}
+
+export function terminalInputForKey(event: TerminalKeyEvent): string | null {
+  return event.type === 'keydown' && event.key === 'Enter' && event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey
+    ? '\n'
+    : null;
+}
+
+export function shouldForwardImeText(data: string | null, inputType: string, isComposing: boolean): data is string {
+  return inputType === 'insertText' && !isComposing && !!data && /[\u3000-\u303f\uff00-\uffef]/u.test(data);
 }
 
 export function normalizeConfig(value: unknown): AppConfig {
