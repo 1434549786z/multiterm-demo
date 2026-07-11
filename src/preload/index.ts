@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { AppConfig, SettingsChoice, SettingsQuestion, TerminalCreateOptions, TerminalDataEvent, TerminalExitEvent } from '../shared';
+import type { AppConfig, SettingsChoice, SettingsQuestion, TerminalCreateOptions, TerminalCreateResult, TerminalDataEvent, TerminalExitEvent } from '../shared';
 
 const api = {
   windowMinimize: () => ipcRenderer.send('window:minimize'),
@@ -11,7 +11,7 @@ const api = {
   exportConfig: (config: AppConfig) => ipcRenderer.invoke('config:export', config) as Promise<boolean>,
   importConfig: () => ipcRenderer.invoke('config:import') as Promise<AppConfig | null>,
   selectDirectory: (currentPath?: string) => ipcRenderer.invoke('dialog:select-directory', currentPath) as Promise<string | null>,
-  terminalCreate: (options: TerminalCreateOptions) => ipcRenderer.invoke('terminal:create', options) as Promise<{ cwd: string }>,
+  terminalCreate: (options: TerminalCreateOptions) => ipcRenderer.invoke('terminal:create', options) as Promise<TerminalCreateResult>,
   terminalInput: (id: string, data: string) => ipcRenderer.send('terminal:input', { id, data }),
   terminalResize: (id: string, cols: number, rows: number) => ipcRenderer.send('terminal:resize', { id, cols, rows }),
   terminalDispose: (id: string) => ipcRenderer.send('terminal:dispose', id),

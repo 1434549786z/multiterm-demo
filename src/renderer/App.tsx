@@ -13,6 +13,7 @@ import {
   type AppConfig,
   type ConsoleId,
   type ConsolePreset,
+  type LayoutId,
   type PresetProfile,
   type ThemeId
 } from '../shared';
@@ -58,6 +59,7 @@ export default function App() {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sessionKey, setSessionKey] = useState(0);
+  const [running, setRunning] = useState(true);
   const systemDark = useSystemDark();
 
   useEffect(() => {
@@ -73,14 +75,48 @@ export default function App() {
   async function saveConfig(next: AppConfig, reload: boolean) {
     const saved = await window.multiTerm.saveConfig(next);
     setConfig(saved);
-    if (reload) setSessionKey((value) => value + 1);
+    if (reload) restartAll();
     setSettingsOpen(false);
+  }
+
+  async function switchProfile(profileId: string) {
+    if (!config) return;
+    const next =
+      profileId === blankProfile.id
+        ? { ...config, openDefaultPresetOnStart: false }
+        : { ...config, openDefaultPresetOnStart: true, defaultPresetId: profileId };
+    const saved = await window.multiTerm.saveConfig(next);
+    setConfig(saved);
+    restartAll();
+  }
+
+  function restartAll() {
+    setRunning(true);
+    setSessionKey((value) => value + 1);
+  }
+
+  function stopAll() {
+    setRunning(false);
   }
 
   return (
     <main className={`app ${theme}`}>
       <header className="app-header">
         <div className="window-title">MultiTerm</div>
+        <div className="header-tools">
+          <select aria-label="选择预设" value={activeProfile.id} onChange={(event) => void switchProfile(event.target.value)}>
+            {config.presetProfiles.map((profile) => (
+              <option key={profile.id} value={profile.id}>{profile.name}</option>
+            ))}
+            <option value={blankProfile.id}>{blankProfile.name}</option>
+          </select>
+          <button className="icon-button" type="button" title="全部重启" aria-label="全部重启" onClick={restartAll}>
+            ↻
+          </button>
+          <button className="icon-button" type="button" title="全部停止" aria-label="全部停止" onClick={stopAll}>
+            ■
+          </button>
+        </div>
         <div className="window-actions">
           <button className="icon-button" type="button" title="设置" aria-label="设置" onClick={() => setSettingsOpen(true)}>
             ⚙
@@ -102,6 +138,7 @@ export default function App() {
         profile={activeProfile}
         config={config}
         theme={theme}
+        active={running}
       />
       {settingsOpen && (
         <SettingsDialog
@@ -122,12 +159,14 @@ function TerminalGrid({
   sessionKey,
   profile,
   config,
-  theme
+  theme,
+  active
 }: {
   sessionKey: number;
   profile: PresetProfile;
   config: AppConfig;
   theme: 'dark' | 'light';
+  active: boolean;
 }) {
   const [left, setLeft] = useState(50);
   const [top, setTop] = useState(50);
@@ -168,6 +207,7 @@ function TerminalGrid({
           fontSize={config.fontSize}
           shouldFocus={config.focusTopLeftOnStart && consolePreset.id === '1'}
           notifications={config.enableNotifications}
+          active={active}
         />
       ))}
       <div className="splitter splitter-x" onPointerDown={(event) => startDrag('x', event)} />
@@ -182,7 +222,8 @@ function TerminalPane({
   theme,
   fontSize,
   shouldFocus,
-  notifications
+  notifications,
+  active
 }: {
   sessionKey: number;
   pane: ConsolePreset;
@@ -190,6 +231,7 @@ function TerminalPane({
   fontSize: number;
   shouldFocus: boolean;
   notifications: boolean;
+  active: boolean;
 }) {
   const [restartKey, setRestartKey] = useState(0);
   const [status, setStatus] = useState('启动中');
@@ -211,6 +253,10 @@ function TerminalPane({
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
+    if (!active) {
+      setStatus('已停止');
+      return;
+    }
 
     setStatus('启动中');
     const terminal = new Terminal({
@@ -258,7 +304,9 @@ function TerminalPane({
       if (event.id === terminalId) terminal.write(event.data);
     });
     const offExit = window.multiTerm.onTerminalExit((event) => {
-      if (event.id === terminalId) setStatus(`已退出 ${event.exitCode}`);
+      if (event.id !== terminalId) return;
+      setStatus(`已退出 ${event.exitCode}`);
+      void notify(paneNameRef.current, notificationsRef.current, `进程已退出 ${event.exitCode}`);
     });
 
     terminal.attachCustomKeyEventHandler((event) => {
@@ -291,7 +339,8 @@ function TerminalPane({
       fitAndResize();
       void window.multiTerm
         .terminalCreate({ id: terminalId, cwd: pane.cwd, command: pane.command, cols: terminal.cols, rows: terminal.rows })
-        .then(() => {
+        .then(({ cwd, usedFallbackCwd }) => {
+          if (usedFallbackCwd) terminal.writeln(`\r\n[工作目录不存在，已使用 ${cwd}]\r\n`);
           setStatus('运行中');
           if (shouldFocus) terminal.focus();
         })
@@ -314,7 +363,7 @@ function TerminalPane({
       terminalRef.current = null;
       searchRef.current = null;
     };
-  }, [terminalId]);
+  }, [terminalId, active]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -381,6 +430,17 @@ function TerminalPane({
     }
   }
 
+  async function copyRecentOutput() {
+    const buffer = terminalRef.current?.buffer.active;
+    if (!buffer) return;
+    const lines: string[] = [];
+    for (let index = Math.max(0, buffer.length - 200); index < buffer.length; index += 1) {
+      lines.push(buffer.getLine(index)?.translateToString(true) ?? '');
+    }
+    await navigator.clipboard.writeText(lines.join('\n').trimEnd());
+    terminalRef.current?.focus();
+  }
+
   function findNext() {
     if (query.trim()) searchRef.current?.findNext(query);
   }
@@ -395,6 +455,9 @@ function TerminalPane({
         <div className="pane-actions">
           <button className="icon-button small" type="button" title="搜索" aria-label="搜索" onClick={() => setSearchOpen((value) => !value)}>
             ⌕
+          </button>
+          <button className="icon-button small" type="button" title="复制最近输出" aria-label="复制最近输出" onClick={() => void copyRecentOutput()}>
+            ⧉
           </button>
           <button className="icon-button small" type="button" title="重启终端" aria-label="重启终端" onClick={() => setRestartKey((value) => value + 1)}>
             ↻
@@ -552,6 +615,17 @@ function SettingsDialog({
     setActiveProfileId(id);
   }
 
+  function copyProfile() {
+    const id = `preset-${Date.now()}`;
+    const profile: PresetProfile = {
+      id,
+      name: `${activeProfile.name} 副本`,
+      consoles: activeProfile.consoles.map((consolePreset) => ({ ...consolePreset }))
+    };
+    setDraft((current) => ({ ...current, defaultPresetId: id, presetProfiles: [...current.presetProfiles, profile] }));
+    setActiveProfileId(id);
+  }
+
   function deleteProfile() {
     if (draft.presetProfiles.length <= 1) return;
     const remaining = draft.presetProfiles.filter((profile) => profile.id !== activeProfile.id);
@@ -623,7 +697,7 @@ function SettingsDialog({
                 </label>
                 <label>
                   <span>启动时窗口布局</span>
-                  <select value={draft.startupLayout} onChange={() => patch({ startupLayout: 'grid-2x2' })}>
+                  <select value={draft.startupLayout} onChange={(event) => patch({ startupLayout: event.target.value as LayoutId })}>
                     <option value="grid-2x2">四分屏（2x2）</option>
                   </select>
                 </label>
@@ -672,6 +746,7 @@ function SettingsDialog({
                 <h2>预设管理</h2>
                 <div className="button-row">
                   <button type="button" onClick={addProfile}>添加预设</button>
+                  <button type="button" onClick={copyProfile}>复制预设</button>
                   <button type="button" onClick={deleteProfile} disabled={draft.presetProfiles.length <= 1}>删除预设</button>
                 </div>
               </div>
@@ -764,10 +839,10 @@ function resolveTheme(theme: ThemeId, systemDark: boolean): 'dark' | 'light' {
   return theme === 'system' ? (systemDark ? 'dark' : 'light') : theme;
 }
 
-async function notify(name: string, enabled: boolean) {
+async function notify(name: string, enabled: boolean, body = '终端收到提醒') {
   if (!enabled || !('Notification' in window)) return;
   if (Notification.permission === 'default') await Notification.requestPermission();
-  if (Notification.permission === 'granted') new Notification(`MultiTerm：${name}`, { body: '终端收到提醒' });
+  if (Notification.permission === 'granted') new Notification(`MultiTerm：${name}`, { body });
 }
 
 function clamp(value: number, min: number, max: number) {

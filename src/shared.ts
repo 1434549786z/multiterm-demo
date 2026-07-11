@@ -41,6 +41,11 @@ export interface TerminalCreateOptions {
   rows: number;
 }
 
+export interface TerminalCreateResult {
+  cwd: string;
+  usedFallbackCwd: boolean;
+}
+
 export interface TerminalDataEvent {
   id: string;
   data: string;

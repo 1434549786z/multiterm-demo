@@ -3,7 +3,15 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import * as pty from 'node-pty';
-import { normalizeConfig, SETTINGS_QUESTIONS, type AppConfig, type SettingsChoice, type SettingsQuestion, type TerminalCreateOptions } from '../shared';
+import {
+  normalizeConfig,
+  SETTINGS_QUESTIONS,
+  type AppConfig,
+  type SettingsChoice,
+  type SettingsQuestion,
+  type TerminalCreateOptions,
+  type TerminalCreateResult
+} from '../shared';
 
 interface TerminalSession {
   ownerId: number;
@@ -114,9 +122,10 @@ function registerIpc(): void {
     return result.canceled ? null : result.filePaths[0];
   });
 
-  ipcMain.handle('terminal:create', (event, options: TerminalCreateOptions) => {
+  ipcMain.handle('terminal:create', (event, options: TerminalCreateOptions): TerminalCreateResult => {
     closeSession(options.id);
-    const cwd = existingDirectory(options.cwd);
+    const requestedCwd = options.cwd.trim();
+    const cwd = existingDirectory(requestedCwd);
     const shell = defaultShell();
     const cols = saneDimension(options.cols, 80);
     const rows = saneDimension(options.rows, 24);
@@ -140,7 +149,7 @@ function registerIpc(): void {
     if (options.command.trim()) {
       setTimeout(() => terminal.write(`${options.command.trimEnd()}\r`), 120);
     }
-    return { cwd };
+    return { cwd, usedFallbackCwd: !!requestedCwd && cwd !== requestedCwd };
   });
 
   ipcMain.on('terminal:input', (_event, payload: { id: string; data: string }) => {

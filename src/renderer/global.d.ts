@@ -1,4 +1,4 @@
-import type { AppConfig, SettingsChoice, SettingsQuestion, TerminalCreateOptions, TerminalDataEvent, TerminalExitEvent } from '../shared';
+import type { AppConfig, SettingsChoice, SettingsQuestion, TerminalCreateOptions, TerminalCreateResult, TerminalDataEvent, TerminalExitEvent } from '../shared';
 
 export {};
 
@@ -14,7 +14,7 @@ declare global {
       exportConfig: (config: AppConfig) => Promise<boolean>;
       importConfig: () => Promise<AppConfig | null>;
       selectDirectory: (currentPath?: string) => Promise<string | null>;
-      terminalCreate: (options: TerminalCreateOptions) => Promise<{ cwd: string }>;
+      terminalCreate: (options: TerminalCreateOptions) => Promise<TerminalCreateResult>;
       terminalInput: (id: string, data: string) => void;
       terminalResize: (id: string, cols: number, rows: number) => void;
       terminalDispose: (id: string) => void;
