@@ -58,12 +58,16 @@ const terminalThemes = {
 export default function App() {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [sessionKey, setSessionKey] = useState(0);
-  const [running, setRunning] = useState(true);
+  const [visitedProfileIds, setVisitedProfileIds] = useState<string[]>([]);
+  const [sessionKeys, setSessionKeys] = useState<Record<string, number>>({});
+  const [stoppedProfileIds, setStoppedProfileIds] = useState<string[]>([]);
   const systemDark = useSystemDark();
 
   useEffect(() => {
-    void window.multiTerm.getConfig().then(setConfig);
+    void window.multiTerm.getConfig().then((saved) => {
+      setConfig(saved);
+      if (saved.openDefaultPresetOnStart) setVisitedProfileIds([saved.defaultPresetId]);
+    });
   }, []);
 
   if (!config) return <div className="boot-screen">MultiTerm</div>;
@@ -71,11 +75,29 @@ export default function App() {
   const theme = resolveTheme(config.theme, systemDark);
   const selectedProfile = config.presetProfiles.find((profile) => profile.id === config.defaultPresetId) ?? config.presetProfiles[0];
   const activeProfile = config.openDefaultPresetOnStart ? selectedProfile : blankProfile;
+  const visitedProfiles = config.presetProfiles.filter((profile) => visitedProfileIds.includes(profile.id));
+
+  function applyConfig(next: AppConfig, reload: boolean) {
+    const activeProfileId = next.openDefaultPresetOnStart ? next.defaultPresetId : null;
+    setConfig(next);
+    if (reload) {
+      setVisitedProfileIds(activeProfileId ? [activeProfileId] : []);
+      setStoppedProfileIds([]);
+      if (activeProfileId) {
+        setSessionKeys((current) => ({ ...current, [activeProfileId]: (current[activeProfileId] ?? 0) + 1 }));
+      }
+      return;
+    }
+    const profileIds = next.presetProfiles.map((profile) => profile.id);
+    setVisitedProfileIds((current) => {
+      const retained = current.filter((id) => profileIds.includes(id));
+      return activeProfileId && !retained.includes(activeProfileId) ? [...retained, activeProfileId] : retained;
+    });
+  }
 
   async function saveConfig(next: AppConfig, reload: boolean) {
     const saved = await window.multiTerm.saveConfig(next);
-    setConfig(saved);
-    if (reload) restartAll();
+    applyConfig(saved, reload);
     setSettingsOpen(false);
   }
 
@@ -86,17 +108,18 @@ export default function App() {
         ? { ...config, openDefaultPresetOnStart: false }
         : { ...config, openDefaultPresetOnStart: true, defaultPresetId: profileId };
     const saved = await window.multiTerm.saveConfig(next);
-    setConfig(saved);
-    restartAll();
+    applyConfig(saved, false);
   }
 
   function restartAll() {
-    setRunning(true);
-    setSessionKey((value) => value + 1);
+    if (activeProfile.id === blankProfile.id) return;
+    setStoppedProfileIds((current) => current.filter((id) => id !== activeProfile.id));
+    setSessionKeys((current) => ({ ...current, [activeProfile.id]: (current[activeProfile.id] ?? 0) + 1 }));
   }
 
   function stopAll() {
-    setRunning(false);
+    if (activeProfile.id === blankProfile.id) return;
+    setStoppedProfileIds((current) => current.includes(activeProfile.id) ? current : [...current, activeProfile.id]);
   }
 
   return (
@@ -110,10 +133,10 @@ export default function App() {
             ))}
             <option value={blankProfile.id}>{blankProfile.name}</option>
           </select>
-          <button className="icon-button" type="button" title="全部重启" aria-label="全部重启" onClick={restartAll}>
+          <button className="icon-button" type="button" title="全部重启" aria-label="全部重启" onClick={restartAll} disabled={activeProfile.id === blankProfile.id}>
             ↻
           </button>
-          <button className="icon-button" type="button" title="全部停止" aria-label="全部停止" onClick={stopAll}>
+          <button className="icon-button" type="button" title="全部停止" aria-label="全部停止" onClick={stopAll} disabled={activeProfile.id === blankProfile.id}>
             ■
           </button>
         </div>
@@ -132,23 +155,23 @@ export default function App() {
           </button>
         </div>
       </header>
-      <TerminalGrid
-        key={sessionKey}
-        sessionKey={sessionKey}
-        profile={activeProfile}
-        config={config}
-        theme={theme}
-        active={running}
-      />
+      {visitedProfiles.map((profile) => (
+        <TerminalGrid
+          key={profile.id}
+          sessionKey={sessionKeys[profile.id] ?? 0}
+          profile={profile}
+          config={config}
+          theme={theme}
+          active={!stoppedProfileIds.includes(profile.id)}
+          visible={profile.id === activeProfile.id}
+        />
+      ))}
       {settingsOpen && (
         <SettingsDialog
           config={config}
           onClose={() => setSettingsOpen(false)}
           onSave={saveConfig}
-          onImport={(imported) => {
-            setConfig(imported);
-            setSessionKey((value) => value + 1);
-          }}
+          onImport={(imported) => applyConfig(imported, true)}
         />
       )}
     </main>
@@ -160,13 +183,15 @@ function TerminalGrid({
   profile,
   config,
   theme,
-  active
+  active,
+  visible
 }: {
   sessionKey: number;
   profile: PresetProfile;
   config: AppConfig;
   theme: 'dark' | 'light';
   active: boolean;
+  visible: boolean;
 }) {
   const [left, setLeft] = useState(50);
   const [top, setTop] = useState(50);
@@ -196,11 +221,13 @@ function TerminalGrid({
     <section
       ref={gridRef}
       className="terminal-grid"
-      style={{ '--left-column': `${left}%`, '--top-row': `${top}%` } as CSSProperties}
+      hidden={!visible}
+      style={{ '--left-column': `${left}%`, '--top-row': `${top}%`, display: visible ? undefined : 'none' } as CSSProperties}
     >
       {consoles.map((consolePreset) => (
         <TerminalPane
           key={consolePreset.id}
+          profileId={profile.id}
           sessionKey={sessionKey}
           pane={consolePreset}
           theme={theme}
@@ -217,6 +244,7 @@ function TerminalGrid({
 }
 
 function TerminalPane({
+  profileId,
   sessionKey,
   pane,
   theme,
@@ -225,6 +253,7 @@ function TerminalPane({
   notifications,
   active
 }: {
+  profileId: string;
   sessionKey: number;
   pane: ConsolePreset;
   theme: 'dark' | 'light';
@@ -238,7 +267,7 @@ function TerminalPane({
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; hasSelection: boolean } | null>(null);
-  const terminalId = `${sessionKey}:${pane.id}:${restartKey}`;
+  const terminalId = `${profileId}:${sessionKey}:${pane.id}:${restartKey}`;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const searchRef = useRef<SearchAddon | null>(null);
